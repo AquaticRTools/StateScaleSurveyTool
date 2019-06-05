@@ -9,9 +9,9 @@ To use, open the StateScaleSurveyTool folder in github and click on the green "C
 5. StateScaleSurveySupplement1.Rmd - optional, additional code and functions
 6. Rendered Documents - word documents rendered from the StateScaleSurveyTool.Rmd and StateScaleSurveySupplement1.Rmd for your reference
 
-Once you download all of the files and set up file paths in the StateScaleSurveyTool.Rmd (and save the SSglobal.R and MakeData.R in the same folder as StateScaleSurveyTool.Rmd), you should be able to run all the code and Render (Knit to word) the StateScaleSurveyTool.Rmd (and/or the StateScaleSurveySupplement1.Rmd).
+Once you download all of the files and set up file paths in the StateScaleSurveyTool.Rmd (and save the SSglobal.R and MakeData.R in the same folder as StateScaleSurveyTool.Rmd), you should be able to run all the code.  To generate the word document from the StateScaleSurveyTool.Rmd (or Supplement.Rmd) file, click 'Knit->Knit to word' in Rstudio (near to the save icon).
 
-More information about the data, code, and useful tips are in the StateScaleSurveyTool.Rmd text (and the rendered word document).
+More information about the data, code, and useful tips are in the StateScaleSurveyTool.Rmd text (and the rendered word document).  If you'd like a demonstration, or have any questions, suggestions, or comments, please contact Leah Ettema at EPA's R3 Wheeling, WV office (ettema.leah@epa.gov, 304-234-0245).    
 
 ###Software and code specifications
 This StateScaleSurveyTool.Rmd report was created using:
