@@ -1,0 +1,337 @@
+---
+title: "R State Scale Survey Report Tool Supplement"
+output:
+  word_document: default
+  html_notebook: default
+---
+
+This document demonstrates some spatial features, a CDF table lookup function for all subpopulations, and example relative risk graphs.  
+
+```{r, include=FALSE, echo=FALSE}
+# R version 3.4.4 "Someone to Lean On"
+
+knitr::opts_chunk$set(echo = FALSE)
+
+suppressPackageStartupMessages(library(tidyverse))#1.2.1
+suppressPackageStartupMessages(library(sf))#0.6-1
+extrafont::loadfonts(device="win") # run this once each session, see https://cran.r-project.org/web/packages/extrafont/README.html for more info on the font_import() function required for "	font family not found in Windows font database" warning to go away
+suppressPackageStartupMessages(library(sp))
+suppressPackageStartupMessages(library(rgdal))
+suppressPackageStartupMessages(library(ggplot2))
+
+towns<-rgdal::readOGR('ME-GIS-Master', 'Towns', verbose=FALSE) #ignore/delete this line - just used in creating fake data (MakeData.R will not run without it)
+
+#Import spatial data
+setwd("C:/Users/LETTEMA/Documents/SSS_reportTool/") 
+
+#MakeData.R generates fake data for this example.  
+source('MakeData.R') 
+
+source('SSglobal.R') #this does data preparation for the report
+
+```
+
+```{r}
+#Generating random, "real"" coordinates, not ones in middle earth
+longitude1<-round(sample(-81000000:-80000000, 750, replace=F), digits=6)
+longitude<-round(longitude1/1000000, digits=6)
+latitude1<-round(sample(38000000:40000000, 750, replace=F), digits=6)
+latitude<-round(latitude1/1000000, digits=6)
+
+sampleloc<-cbind(longitude, latitude)
+
+#creating a polygon (box around sample points) to represent a state - you would import your own state shapefile using rgdal::readOGR('Folder Name', 'shapefile name', verbose=FALSE) instead
+coords=matrix(c(min(longitude), max(latitude),
+                min(longitude), min(latitude),
+                max(longitude), min(latitude), 
+                max(longitude), max(latitude),
+                min(longitude), max(latitude)), 
+              ncol=2, byrow=TRUE)
+
+P1<-Polygon(coords)
+P2<-Polygons(list(P1), ID="state")
+
+#adding projection to Polygon coordinates - you may need to do this to your shapefile
+pretendstate<-SpatialPolygons(list(P2), proj4string = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0")) 
+
+SampleData<-cbind(sampleloc, surveyData) #Import your sample data table here
+
+
+```
+
+
+##Create Spatial Layers - Sampling points 
+The code below creates a shapefile from a table of lat/longs and associated attributes.  You could import your own shapefiles created in GIS instead. 
+
+For easy color coding, it is helpful to create a layer for every dataset you wish to display (eg. samples by year, or basin, or evaluated vs sampled).   If you include site sizes other than Nrep (such as sites evaluated but not sampled) using dynamic text references, you could reference those spatial layers (created from your database) rather than the original sample database or table.  It can be simpler to reference the number of observations in a spatial data layer (which has already been filtered) rather than referencing the original dataset and filtering again.  But, how you reference site, sample or any other numbers is entirely based on your code/data preferences and structure. 
+```{r Create shapefile from lat longs}
+
+#data table of samples
+allProbdata<-SampleData %>% 
+  select(siteID, Year, latitude, longitude, Basin, IR2018)
+
+#creating SpatialPointsDataFrame (Shapefile) of sampling data from a data table.  Could also import a shapefile from GIS using readOGR()
+
+#sdelct data
+allProb <- SampleData %>% #left_join(sampleData,designStatus,by=c('siteID','Year')) %>%
+  select(siteID, Year, latitude, longitude, Basin, IR2018)
+
+# Define coordinate and projection system for the shapefile: https://mgimond.github.io/Spatial/coordinate-systems-in-r.html
+#On Attributes: https://gis.stackexchange.com/questions/214062/create-a-shapefile-from-dataframe-in-r-keeping-attribute-table
+coordinates(allProb) <- ~longitude+latitude
+proj4string(allProb) <- CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0")
+
+# Now save it
+raster::shapefile(allProb, "allProb2018test.shp", overwrite=T)
+
+####To map any subset of data, create layers of that data from a previously existing shapefile
+#subset by IR year
+IRstations2018 <- subset(allProb, allProb@data$IR2018 == '2018') #for easier subsetting, our data file has a column to mark all samples used in the IR2018 report
+
+#Subset by Basin
+NorthStations<-subset(allProb, allProb@data$Basin == 'North')
+SouthStations<-subset(allProb, allProb@data$Basin == 'South')
+EastStations<-subset(allProb, allProb@data$Basin == 'East')
+WestStations<-subset(allProb, allProb@data$Basin == 'West')
+
+#Subset by Year
+sites2009<-subset(allProb, allProb@data$Year == '2009')
+sites2010<-subset(allProb, allProb@data$Year == '2010')
+sites2011<-subset(allProb, allProb@data$Year == '2011')
+sites2012<-subset(allProb, allProb@data$Year == '2012')
+sites2013<-subset(allProb, allProb@data$Year == '2013')
+sites2014<-subset(allProb, allProb@data$Year == '2014')
+sites2015<-subset(allProb, allProb@data$Year == '2015')
+sites2016<-subset(allProb, allProb@data$Year == '2016')
+sites2017<-subset(allProb, allProb@data$Year == '2017')
+sites2018<-subset(allProb, allProb@data$Year == '2018')
+
+```
+
+Examples of dynamic referencing: 
+
+There were `r nrow(sites2009)` samples collected in 2009 and `r nrow(sites2010)` collected in 2010.  There were `r nrow(NorthStations)+nrow(SouthStations)` samples collected in the North and South Basins from 2009-2018. For the 2018 IR (from `r IRrange`), there were `r nrow(IRstations2018)` samples collected.  Or, there were `r nrow(allProbdata %>% filter(Basin=="West"|Basin=="East" && IR2018=="2018"))` samples collected in the West and East Basins from `r IRrange`.
+
+With all of those layers created, it is easy to display different combinations of them on a map (pretend the square is your state shapefile).
+
+##### Figure 1.2. Probabilistic monitoring locations from `r IRrange` (n = `r nrow(IRstations2018)`).
+```{r  fig.width=5.75, fig.height=2.5}
+#Plot data
+
+par(mar=c(0,0,0,0),oma=c(0,0,0,0))
+plot(pretendstate,border='black',col='wheat1',ylim=c(min(latitude),max(latitude)))
+plot(IRstations2018,col='grey21',pch=19,cex=0.5,add=T)
+plot(sites2009, col='blue', pch=19, cex=0.5, add=T)
+legend('left',legend=c(' 2018 IR ProMon Sites', '2009 Sample Sites')
+       ,title='Legend',bty='n',inset=0, pch=c(15,15,19),cex=0.8 #
+       ,col=c('grey21', 'blue'))
+```
+
+##### Figure 1.3. Probabilistic monitoring wadeable locations from 2013 - 2018 (n = `r nrow(allProb)`).
+
+```{r fig.width=5.75, fig.height=2.5}  
+par(mar=c(0,0,0,0),oma=c(0,0,0,0))
+plot(pretendstate,border='wheat3',col='wheat1',ylim=c(min(latitude),max(latitude)))
+plot(sites2018,col='red',pch=19,cex=0.5,add=T)
+plot(sites2017,col='blue',pch=19,cex=0.5,add=T)
+plot(sites2016,col='green',pch=19,cex=0.5,add=T)
+plot(sites2015,col='purple',pch=19,cex=0.5,add=T)
+plot(sites2014,col='orange',pch=19,cex=0.5,add=T)
+plot(sites2013,col='black',pch=19,cex=0.5,add=T)
+legend('topleft',legend=c('State','2018 wadeable sites',
+                          '2017 wadeable sites','2016 wadeable sites',
+                          '2015 wadeable sites','2014 wadeable sites',
+                          '2013 wadeable sites'),
+       title='Legend',bty='n',inset=0.05,pch=c(15,19,19,19,19,19,19),cex=0.8,
+       col=c('wheat1','red','blue','green','purple','orange','black'))
+```
+
+## CDF Table Lookup Function
+This function lwill look up one parameter/indicator value (usually a threshold for a category) and confidence bounds from a cdf table for every basin (or other subpopulation) you choose to program into the function.
+
+This functions will only work for indicators that have basin data (or other supopulation data) programmed into the function.  In the example data, only the MMI indicator has population estimates broken out by basin.  The rest of the indicators do only have statewide cdf curves, not basin data subsets, so the function will not work for them.
+
+```{r lookup function, echo=TRUE}
+#Function variables:
+#dat<- CDF table - defined outside of function.
+
+#Function inputs
+#indicator<- Indicator you want to look up 
+#measure<-threshold you are looking up (data below or above this value)
+#category<-what condition category you want to assign to the data you select
+#revOrder<-True/False, TRUE if lower values have better water quality than high values.  False if High values have better water quality. 
+
+#Will help with micromap formatting, if pursued
+
+dat<-CDFdat
+
+statslookup <- function(indicator,measure,category,revOrder){
+##define these variables (uncomment them) if you want to see how the function works by line/chunk
+# dat<-CDFdat
+# indicator='MMI'
+# measure=65
+# category='SubOptimal'
+# revOrder=FALSE
+  
+#These are river basins you want to look up stats for - add a filter and select for each one.  You need to add your own Subpopulations here
+  MiddleEarth <-  filter(dat,Subpopulation=='MiddleEarth'&Indicator==indicator)%>%
+    select(Value,Estimate.P,MoE.P,NResp)
+  Shire <-  filter(dat,Subpopulation=='Shire'&Indicator==indicator)%>%
+    select(Value,Estimate.P,MoE.P,NResp)
+  Mordor <-  filter(dat,Subpopulation=='Mordor'&Indicator==indicator)%>%
+    select(Value,Estimate.P,MoE.P,NResp)
+  Gondor <-  filter(dat,Subpopulation=='Gondor'&Indicator==indicator)%>%
+    select(Value,Estimate.P,MoE.P,NResp)
+  
+#Create dataframe of basins and sample size
+  x <- data.frame(Subpopulation=c('MiddleEarth','Shire','Mordor','Gondor'),
+                  Category=category,
+                  NResp=c(max(MiddleEarth$NResp),max(Shire$NResp),max(Mordor$NResp),max(Gondor$NResp)),
+                  matchingdfname=c('MiddleEarth','Shire','Mordor','Gondor'))
+
+#create a separate data frame looking up the values that corresponse with your categories
+  #We are creating two dataframes - one for normal order (high values correspond to good stream quality) and one for reverse order (low values correspond to good stream quality).  An ifelse will select the correct one.
+  y=data.frame(Estimate.P=NA,MoE.P=NA)
+  for(i in 1:nrow(x)){
+    y[i,1] <- vlookup(measure,get(as.character(x[i,4])),2,TRUE) #vlookup function created in SSglobal.R 
+    y[i,2] <- vlookup(measure,get(as.character(x[i,4])),3,TRUE)
+    y[is.na(y)] <- 0
+    y[y>100] <- 100
+  }
+  #Create same dataframe, but if low values mean good water quality
+  y2 <- mutate(y,Estimate.P2=100-Estimate.P,
+               MoE.P2=MoE.P) %>%
+              select(Estimate.P2,MoE.P2)
+  y2[y2>100] <- 100
+  
+  #Add the indicator to the column names of the data frame
+  names(y) <- c(paste(indicator,"Estimate.P",sep=""),paste(indicator,"MoE.P",sep=""))
+  names(y2) <- c(paste(indicator,"Estimate.P",sep=""),paste(indicator,"MoE.P",sep=""))
+  
+  #use the input revOrder to select the correct dataframe, and combine it with the basin name dataframe
+  if(revOrder==FALSE){
+    z <- cbind(x,y)}
+  if(revOrder==TRUE){
+    z<-cbind(x,y2)}
+  return(z)
+}
+
+MMISuboptimal<-statslookup(indicator="MMI", measure = 65, category="Suboptimal", revOrder="FALSE")
+#Other indicators in this data (pH, TotHab) do not have subasin data, so the function will not work
+```
+
+##Stressor Extent and Relative Risk Plots
+
+If you calculated stressors extent and relative risk, these are examples of how you could display the results.  The first figure (2.4-23) displays the the estimated percent of rivers not meeting standards or thresholds (impaired).
+
+##### Figure 2.4-23. Stressor extent for major benthic macroinvertebrate stressors in Middle Earth streams. The horizontal lines associated with the parameters illustrate the confidence intervals. Stressor extent shows the frequency of the stressor in all Middle Earth streams from data collected for the `r IRyear` Integrated Report (`r IRrange`). 
+
+```{r, fig.width=7.5, fig.height=3.5}
+#For demonstration purposes
+
+#vlookup function created in SSglobal.R
+totalshabsuboptimal <- data.frame(Condition=c('Suboptimal'),
+                                  pct=c(vlookup(120,hab,2,TRUE)), 
+                                  MoE=c(vlookup(120,hab,3,TRUE))) %>%
+                    mutate(Parameter='Habitat Disturbance')%>%select(Parameter,everything())
+
+
+#We don't have TP data, so making it up. You would copy the code above substituing appropriate values for other indicators
+TotalsTPsuboptimal<-totalshabsuboptimal
+TotalsTPsuboptimal$Parameter="TP"
+TotalsTPsuboptimal$pct=45.6
+TotalsTPsuboptimal$MoE=5.6
+
+#If you didn't make it up, this would be the code
+# totalsTPsuboptimal <- data.frame(Condition=c('Suboptimal'),
+#                                  pct=c(100-vlookup(0.05,TP,2,TRUE)),
+#                                  ErrorLCB95=c(vlookup(0.05,TP,2,TRUE)-vlookup(0.05,TP,3,TRUE)),
+#                                  ErrorUCB95=c(vlookup(0.05,TP,4,TRUE)-vlookup(0.05,TP,2,TRUE)))%>%
+#   mutate(Parameter='Total Phosphorus')%>%select(Parameter,everything())
+
+#We don't have TDS data, so making it up.
+TotalsTDSsuboptimal<-totalshabsuboptimal
+TotalsTDSsuboptimal$Parameter="TDS"
+TotalsTDSsuboptimal$pct=26.6
+TotalsTDSsuboptimal$MoE=4.6
+
+#If you had TDS CDF results, you could look it up like this
+# totalsTDSsuboptimal <- data.frame(Condition=c('Suboptimal'),
+#                                   pct=c(100-vlookup(350,TDS,2,TRUE)),
+#                                   ErrorLCB95=c(vlookup(350,TDS,2,TRUE)-vlookup(350,TDS,3,TRUE)),
+#                                   ErrorUCB95=c(vlookup(350,TDS,4,TRUE)-vlookup(350,TDS,2,TRUE)))%>%
+#   mutate(Parameter='Ionic Strength')%>%select(Parameter,everything())
+
+# Stressor extent
+stressorext <- rbind(totalshabsuboptimal, TotalsTDSsuboptimal, TotalsTPsuboptimal) %>%
+  arrange(desc(pct))
+# rearrange factor level order based on descending pct, have to list backwards to get plot to
+# show up in correct order
+stressorext$Parameter <- factor(stressorext$Parameter,
+                                levels=c('TP','TDS','Habitat Disturbance'),
+                                labels=c('Total Phosphorus','Ionic Strength','Habitat Disturbance'))
+
+
+pstressorext <- ggplot(stressorext,aes(Parameter,pct,fill=Condition,label=pct))+
+                  geom_bar(stat='identity',width=.5)+
+                  theme(aspect.ratio=4/6)+
+                  labs(x="Parameter", y = "Percent of Stream Miles")+ 
+                  coord_flip()+
+                  ylim(-1,60)+
+                  scale_x_discrete(breaks=unique(stressorext$Parameter),
+                                   labels=addline_format(stressorext$Parameter))+ #addline_format() function defined in SSglobal
+                  geom_text(aes(label=paste(format(pct,digits=1,nsmall=1),"% +/- ",                                         format(MoE,digits=1,nsmall=1),"%",sep=""),
+                                y=58),size=3,family='Arial')+
+                  geom_errorbar(aes(ymin=pct-MoE, ymax=pct+MoE), width=0.2)+ # error bars
+                  theme_minimal()+
+                  scale_fill_manual(values=c("#D55E00"))+
+                  theme(legend.position="none", # no legend,
+                        plot.title = element_text(hjust = 0.5), # center title
+                        text=element_text(family="Arial"),
+                        panel.grid.major.x = element_blank(),
+                        panel.grid.minor = element_blank(),
+                        panel.background = element_blank(),
+                        axis.line = element_line(colour = "black"))+ # no background grid
+                  theme(plot.margin=unit(c(0,1,0,0),'cm'))
+
+pstressorext
+```
+
+The next figure (2.4-24) displays relative risk results.  For more on calculating relative risk see [Relative Risk and Attributable Risk Analysis](https://cran.r-project.org/web/packages/spsurvey/vignettes/Risk_Analysis.pdf) or the [spsurvey package documentation](https://cran.r-project.org/web/packages/spsurvey/spsurvey.pdf).
+
+
+##### Figure 2.4-24. Relative Risk for major benthic macroinvertebrate stressors in all Middle Earth streams. The horizontal lines associated with the parameters illustrate the confidence intervals. The vertical dashed line at 1 indicates significance; thus, all relative risk estimates and confidence intervals that exceed the dashed vertical are significant. Relative risk shows the number of times more likely a benthic macroinvertebrate community is to be scored in the suboptimal range if the parameter shown on the y-axis is degraded. Data encompasses samples collected from 2009 - `r IRyearWindowEnd`.
+
+
+```{r relativeRisk, echo=FALSE, fig.height=3.5, fig.width=7.5}
+rr<-rr #relative risk data from MakeData.R
+
+rr$Stressor <- factor(rr$Stressor,
+                      levels=c("TPstatus", "LRBSstatus", "MetalCCUstatus", "TNstatus", "TDSstatus", "TotHabstatus"),
+                      labels=c('Total Phosphorus','Streambed Sedimentation',
+                                         'Cumulative Dissolved Metals','Total Nitrogen',
+                                         'Ionic Strength','Habitat Disturbance'))
+
+prr <- ggplot(rr,aes(Stressor,Estimate,fill=Subpopulation,label=Estimate))+
+          geom_bar(stat='identity',width=.5)+
+          theme(aspect.ratio=4/6)+
+          labs(x="Stressor", y = "Relative Risk")+
+          ylim(-0.1,10)+
+          scale_x_discrete(breaks=unique(rr$Stressor),
+                           labels=addline_format(rr$Stressor))+
+          coord_flip()+ 
+          geom_hline(yintercept=1,linetype = "longdash")+
+          geom_text(aes(label=paste(format(Estimate,digits=1,nsmall=1)),
+                        vjust=-0.5,hjust=-0.5),size=3,family='Arial')+
+          geom_errorbar(aes(ymin=LCB95Pct, ymax=UCB95Pct), width=0.2)+ # error bars
+  theme_minimal()+scale_fill_manual(values=c("#D55E00"))+
+  theme(legend.position="none")+ # no legend, center title
+  theme( text=element_text(family="Arial"),
+    panel.grid.major.x = element_blank(),panel.grid.minor = element_blank(),panel.background = element_blank(),
+    axis.line = element_line(colour = "black"))+ # no background grid
+  theme(plot.margin=unit(c(0,1,0,0),'cm'))
+prr
+```
+
+
+
