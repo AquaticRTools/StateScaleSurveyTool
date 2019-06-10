@@ -5,7 +5,7 @@ IRyearWindowEnd <- '2016'
 IRrange <- '2011 - 2016'
 State <- 'Middle Earth'
 
-#CDFdata<- read.csv('SS_allCDF.csv') #you would read in CDF data here
+#CDFdat2<- read.csv('SS_allCDF.csv') #you would read in CDF data here
 CDFdat<-CDFdat2 %>%  #For this example, CDF data is hard coded into MakeData.R
   mutate(MoE.P=StdError.P*1.96) #Margin of Error at 95% confidence interval is 1.96*StdError.P
 
